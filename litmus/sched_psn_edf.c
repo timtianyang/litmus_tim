@@ -252,7 +252,13 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 
 	return next;
 }
-
+/*
+ * Call back for updating a task. Return 0 if succeeds.
+ */ 
+static long psnedf_change_params(struct task_struct *task, struct rt_task *new_params)
+{
+   return 0; 
+}
 
 /*	Prepare a task for running in RT mode
  */
@@ -654,6 +660,7 @@ static struct sched_plugin psn_edf_plugin __cacheline_aligned_in_smp = {
 	.task_new		= psnedf_task_new,
 	.complete_job		= complete_job,
 	.task_exit		= psnedf_task_exit,
+	.task_change_params	= psnedf_change_params,
 	.schedule		= psnedf_schedule,
 	.task_wake_up		= psnedf_task_wake_up,
 	.task_block		= psnedf_task_block,
