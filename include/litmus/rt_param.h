@@ -165,6 +165,15 @@ struct rt_job {
 
 struct pfair_param;
 
+struct job_struct {
+	/* on vcpu's releaseq for keeping track */
+	struct list_head jobq_elem;
+	/* on domain's ready queue or a release heap */
+	struct bheap_node*	heap_node;
+	/* timing parameters */
+	struct rt_job 		job_params;
+}
+
 /*	RT task parameters for scheduling extensions
  *	These parameters are inherited during clone and therefore must
  *	be explicitly set up before the task set is launched.
@@ -194,8 +203,6 @@ struct rt_param {
 	/* user controlled parameters */
 	struct rt_task 		task_params;
 
-	/* timing parameters */
-	struct rt_job 		job_params;
 
 
 	/* Special handling for periodic tasks executing
@@ -274,7 +281,6 @@ struct rt_param {
 	 *          other than this pointer (which is updated by the heap
 	 *          implementation).
 	 */
-	struct bheap_node*	heap_node;
 	struct release_heap*	rel_heap;
 
 	/* Used by rt_domain to queue task in release list.
@@ -283,6 +289,10 @@ struct rt_param {
 
 	/* Pointer to the page shared between userspace and kernel. */
 	struct control_page * ctrl_page;
+
+	struct job_struct* running_job;
+
+	struct list_head queued_jobs; /* already released jobs */
 };
 
 #endif

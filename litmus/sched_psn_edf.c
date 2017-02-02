@@ -36,6 +36,10 @@ typedef struct {
  */
 #define slock domain.ready_lock
 
+#define DEPLQ_SIZE 16
+
+	struct list_head depletedq; /* list of recycled jobs */
+
 } psnedf_domain_t;
 
 DEFINE_PER_CPU(psnedf_domain_t, psnedf_domains);
@@ -53,9 +57,21 @@ static void psnedf_domain_init(psnedf_domain_t* pedf,
 			       release_jobs_t release,
 			       int cpu)
 {
+	int i;
+
 	edf_domain_init(&pedf->domain, check, release);
 	pedf->cpu      		= cpu;
 	pedf->scheduled		= NULL;
+
+	INIT_LIST_HEAD(&pedf->depletedq);
+	for ( i = 0; i < DEPLQ_SIZE; i++ )
+	{
+	    struct job_struct* job = job_struct_alloc(GFP_ATOMIC);
+
+	    INIT_LIST_HEAD(&job->jobq_elem);
+	    job->heap_node = NULL;
+	    list_add_tail(&job->q_elem, depletedq);
+	}
 }
 
 static void requeue(struct task_struct* t, rt_domain_t *edf)

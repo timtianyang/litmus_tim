@@ -41,6 +41,7 @@ atomic_t release_master_cpu = ATOMIC_INIT(NO_CPU);
 
 static struct kmem_cache * bheap_node_cache;
 extern struct kmem_cache * release_heap_cache;
+static struct kmem_cache * job_struct_cache;
 
 struct bheap_node* bheap_node_alloc(int gfp_flags)
 {
@@ -50,6 +51,16 @@ struct bheap_node* bheap_node_alloc(int gfp_flags)
 void bheap_node_free(struct bheap_node* hn)
 {
 	kmem_cache_free(bheap_node_cache, hn);
+}
+
+struct job_struct* job_struct_alloc(int gfp_flags)
+{
+	return kmem_cache_alloc(job_struct_cache, gfp_flags);
+}
+
+void job_struct_free(struct job_struct* hn)
+{
+	kmem_cache_free(job_struct_cache, hn);
 }
 
 struct release_heap* release_heap_alloc(int gfp_flags);
@@ -744,6 +755,7 @@ static int __init _init_litmus(void)
 
 	bheap_node_cache    = KMEM_CACHE(bheap_node, SLAB_PANIC);
 	release_heap_cache = KMEM_CACHE(release_heap, SLAB_PANIC);
+	job_struct_cache = KMEM_CACHE(job_struct, SLAB_PANIC);
 
 #ifdef CONFIG_MAGIC_SYSRQ
 	/* offer some debugging help */
@@ -766,6 +778,7 @@ static void _exit_litmus(void)
 
 	exit_litmus_proc();
 	kmem_cache_destroy(bheap_node_cache);
+	kmem_cache_destroy(job_struct_cache);
 	kmem_cache_destroy(release_heap_cache);
 }
 
