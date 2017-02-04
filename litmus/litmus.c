@@ -371,18 +371,19 @@ static long __litmus_admit_task(struct task_struct* tsk)
 
 	INIT_LIST_HEAD(&tsk_rt(tsk)->list);
 
-	/* allocate heap node for this task */
-	tsk_rt(tsk)->heap_node = bheap_node_alloc(GFP_ATOMIC);
+	/* allocate heap node for this task in the psn scheudler*/
+	//tsk_rt(tsk)->heap_node = bheap_node_alloc(GFP_ATOMIC);
 	tsk_rt(tsk)->rel_heap = release_heap_alloc(GFP_ATOMIC);
 
-	if (!tsk_rt(tsk)->heap_node || !tsk_rt(tsk)->rel_heap) {
+	if (!tsk_rt(tsk)->rel_heap) {
 		printk(KERN_WARNING "litmus: no more heap node memory!?\n");
 
 		return -ENOMEM;
-	} else {
+	} /*else {
+		init the nodes in psn scheduler
 		bheap_node_init(&tsk_rt(tsk)->heap_node, tsk);
 	}
-
+	*/
 	preempt_disable();
 
 	err = litmus->admit_task(tsk);
@@ -404,7 +405,7 @@ long litmus_admit_task(struct task_struct* tsk)
 
 	BUG_ON(is_realtime(tsk));
 
-	tsk_rt(tsk)->heap_node = NULL;
+	tsk_rt(tsk)->running_job = NULL;
 	tsk_rt(tsk)->rel_heap = NULL;
 
 	if (get_rt_relative_deadline(tsk) == 0 ||
@@ -423,8 +424,9 @@ long litmus_admit_task(struct task_struct* tsk)
 
 out:
 	if (retval) {
-		if (tsk_rt(tsk)->heap_node)
-			bheap_node_free(tsk_rt(tsk)->heap_node);
+		//TO-DO: clean up here
+		//if (tsk_rt(tsk)->heap_node)
+		//	bheap_node_free(tsk_rt(tsk)->heap_node);
 		if (tsk_rt(tsk)->rel_heap)
 			release_heap_free(tsk_rt(tsk)->rel_heap);
 	}

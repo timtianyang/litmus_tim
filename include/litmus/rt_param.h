@@ -172,6 +172,8 @@ struct job_struct {
 	struct bheap_node*	heap_node;
 	/* timing parameters */
 	struct rt_job 		job_params;
+	/* up-pointer */
+	struct rt_param*	rt;
 }
 
 /*	RT task parameters for scheduling extensions

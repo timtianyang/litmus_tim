@@ -36,7 +36,7 @@ typedef struct {
  */
 #define slock domain.ready_lock
 
-#define DEPLQ_SIZE 16
+#define JOB_PER_TASK 4
 
 	struct list_head depletedq; /* list of recycled jobs */
 
@@ -64,18 +64,54 @@ static void psnedf_domain_init(psnedf_domain_t* pedf,
 	pedf->scheduled		= NULL;
 
 	INIT_LIST_HEAD(&pedf->depletedq);
-	for ( i = 0; i < DEPLQ_SIZE; i++ )
-	{
-	    struct job_struct* job = job_struct_alloc(GFP_ATOMIC);
-
-	    INIT_LIST_HEAD(&job->jobq_elem);
-	    job->heap_node = NULL;
-	    list_add_tail(&job->q_elem, depletedq);
-	}
 }
 
-static void requeue(struct task_struct* t, rt_domain_t *edf)
+static inline struct rt_job *
+job_q_elem(struct list_head *elem)
 {
+    /* take out job struct from depletedq*/
+    return list_entry(elem, struct job_struct, jobq_elem);
+}
+
+/*
+ * get a job from the depletedq
+ */
+static struct job_struct* get_job()
+{
+    psnedf_domain_t* 	pedf = local_pedf;
+    struct list_head *depletedq = &pedf->depletedq;
+    struct job_struct* job = NULL;
+
+    if ( !list_empty(depletedq) )
+    {
+	job = job_q_elem(depletedq->next);
+	list_del_init(&job->jobq_elem);
+    }
+    else
+	TRACE("not enough jobs at %llu\n", litmus_clock()); 
+
+    BUG_ON(!job);
+    return job;
+}
+
+/* queues job in EDF order */
+static void queue_job_to(struct job_struct* job, struct rt_param* rt)
+{
+    struct list_head *iter;
+
+    list_for_each ( iter, rt->queued_jobs )
+    {
+	struct job_struct* j = job_q_elem(iter);
+
+	if ( lt_before(job->job_params.deadline, j->job_params.deadline))
+	    break;
+    }
+    list_add_tail(&job->jobq_elem, iter);
+}
+
+static void requeue(struct task_struct* t, struct job_struct* job, rt_domain_t *edf)
+{
+/*
 	if (t->state != TASK_RUNNING)
 		TRACE_TASK(t, "requeue: !TASK_RUNNING\n");
 
@@ -83,7 +119,15 @@ static void requeue(struct task_struct* t, rt_domain_t *edf)
 	if (is_early_releasing(t) || is_released(t, litmus_clock()))
 		__add_ready(edf, t);
 	else
-		add_release(edf, t); /* it has got to wait */
+
+		add_release(edf, t);
+*/
+	job->rt->completed = 0;
+	/* TO_DO: modify queuing interface, which involes changing other plugins */
+	if ( lt_before_eq(job->job_params.release, litmus_clock()) )
+	   __add_ready(edf, t);
+	else
+	   add_release(edf,t); 
 }
 
 /* we assume the lock is being held */
@@ -283,12 +327,16 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 	rt_domain_t* 		edf  = task_edf(t);
 	psnedf_domain_t* 	pedf = task_pedf(t);
 	unsigned long		flags;
+	struct job_struct* job;
 
 	TRACE_TASK(t, "psn edf: task new, cpu = %d\n",
 		   t->rt_param.task_params.cpu);
 
 	/* setup job parameters */
 	release_at(t, litmus_clock());
+	job = get_job();
+	job->job_params = t->rt_param.job_params; /* copy to a spcific job */
+	job->rt = t->rt_param;
 
 	/* The task should be running in the queue, otherwise signal
 	 * code will try to wake it up with fatal consequences.
@@ -298,7 +346,11 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 		/* there shouldn't be anything else scheduled at the time */
 		BUG_ON(pedf->scheduled);
 		pedf->scheduled = t;
+		t->rt_param->running_job = job;
 	} else {
+		/* later useful in mode-change */
+		t->rt_param->running_job = NULL;
+		queue_job_to(job, t->rt_param);
 		/* !is_scheduled means it is not scheduled right now, but it
 		 * does not mean that it is suspended. If it is not suspended,
 		 * it still needs to be requeued. If it is suspended, there is
@@ -665,9 +717,25 @@ static long psnedf_admit_task(struct task_struct* tsk)
 	     && task_cpu(tsk) != remote_edf(task_cpu(tsk))->release_master
 #endif
 		)
-		return 0;
+	{
+	    for ( i = 0; i < JOB_PER_TASK; i++ )
+	    {
+		struct job_struct* job = job_struct_alloc(GFP_ATOMIC);
+
+		INIT_LIST_HEAD(&job->jobq_elem);
+		job->heap_node = bheap_node_alloc(GFP_ATOMIC);
+		job->rt = NULL;
+		bheap_node_init(&job->heap_node, tsk);
+		list_add_tail(&job->q_elem, depletedq);
+	    }
+
+	    INIT_LIST_HEAD(&tsk->rt_param.queued_jobs);
+	    tsk->rt_param.running_job = NULL;
+	
+	    return 0;
+	}
 	else
-		return -EINVAL;
+	    return -EINVAL;
 }
 
 /*	Plugin object	*/
