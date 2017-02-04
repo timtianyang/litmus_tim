@@ -314,6 +314,24 @@ void __add_ready(rt_domain_t* rt, struct task_struct *new)
 	rt->check_resched(rt);
 }
 
+/* add_ready - add a job node to the rt ready queue.
+ * @new:       the newly released task for legacy support
+ * @job:       the newly released job
+ */
+void __add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct* job)
+{
+	TRACE("rt: adding %s/%d (%llu, %llu, %llu) rel=%llu "
+		"to ready queue at %llu\n",
+		new->comm, new->pid,
+		get_exec_cost(new), get_rt_period(new), get_rt_relative_deadline(new),
+		get_release_job(new), litmus_clock());
+
+	BUG_ON(bheap_node_in_heap(job->heap_node));
+
+	bheap_insert(rt->order, &rt->ready_queue, job->heap_node);
+	rt->check_resched(rt);
+}
+
 /* merge_ready - Add a sorted set of tasks to the rt ready queue. They must be runnable.
  * @tasks      - the newly released tasks
  */
@@ -343,6 +361,19 @@ void __add_release_on(rt_domain_t* rt, struct task_struct *task,
 void __add_release(rt_domain_t* rt, struct task_struct *task)
 {
 	TRACE_TASK(task, "add_release(), rel=%llu\n", get_release(task));
+	list_add(&tsk_rt(task)->list, &rt->tobe_released);
+	task->rt_param.domain = rt;
+
+	arm_release_timer(rt);
+}
+
+/* add_release - add a real-time task to the rt release queue.
+ * @task:        the sleeping task
+ * the only difference is the trace because this is not affected by job queue
+ */
+void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* j)
+{
+	TRACE_TASK(task, "add_release(), rel=%llu\n", get_release_job(j));
 	list_add(&tsk_rt(task)->list, &rt->tobe_released);
 	task->rt_param.domain = rt;
 

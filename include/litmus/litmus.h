@@ -80,6 +80,12 @@ int litmus_be_migrate_to(int cpu);
 #define get_deadline(t)		(tsk_rt(t)->job_params.deadline)
 #define get_release(t)		(tsk_rt(t)->job_params.release)
 #define get_lateness(t)		(tsk_rt(t)->job_params.lateness)
+/* new job queue support */
+#define get_exec_time_job(j)    (j->job_params.exec_time)
+#define get_deadline_job(j)		(j->job_params.deadline)
+#define get_release_job(j)		(j->job_params.release)
+#define get_lateness_job(j)		(j->job_params.lateness)
+
 
 /* release policy macros */
 #define is_periodic(t)		(get_release_policy(t) == TASK_PERIODIC)

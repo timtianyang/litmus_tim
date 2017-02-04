@@ -125,9 +125,9 @@ static void requeue(struct task_struct* t, struct job_struct* job, rt_domain_t *
 	job->rt->completed = 0;
 	/* TO_DO: modify queuing interface, which involes changing other plugins */
 	if ( lt_before_eq(job->job_params.release, litmus_clock()) )
-	   __add_ready(edf, t);
+	   __add_ready_job(edf, t, job);
 	else
-	   add_release(edf,t); 
+	   add_release_job(edf, t, job); 
 }
 
 /* we assume the lock is being held */

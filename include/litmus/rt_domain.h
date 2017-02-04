@@ -82,6 +82,10 @@ void __add_ready(rt_domain_t* rt, struct task_struct *new);
 void __merge_ready(rt_domain_t* rt, struct bheap *tasks);
 void __add_release(rt_domain_t* rt, struct task_struct *task);
 
+/* job queue support */
+void __add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct* job);
+void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* job);
+
 static inline struct task_struct* __take_ready(rt_domain_t* rt)
 {
 	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
@@ -120,6 +124,15 @@ static inline void add_ready(rt_domain_t* rt, struct task_struct *new)
 	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
 }
 
+static inline void add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct* j)
+{
+	unsigned long flags;
+	/* first we need the write lock for rt_ready_queue */
+	raw_spin_lock_irqsave(&rt->ready_lock, flags);
+	__add_ready_job(rt, new, j);
+	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
+}
+
 static inline void merge_ready(rt_domain_t* rt, struct bheap* tasks)
 {
 	unsigned long flags;
@@ -145,6 +158,14 @@ static inline void add_release(rt_domain_t* rt, struct task_struct *task)
 	unsigned long flags;
 	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
 	__add_release(rt, task);
+	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
+}
+
+static inline void add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* j)
+{
+	unsigned long flags;
+	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
+	__add_release_job(rt, task, j);
 	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
 }
 
