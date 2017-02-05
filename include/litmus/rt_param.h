@@ -174,7 +174,7 @@ struct job_struct {
 	struct rt_job 		job_params;
 	/* up-pointer */
 	struct rt_param*	rt;
-}
+};
 
 /*	RT task parameters for scheduling extensions
  *	These parameters are inherited during clone and therefore must
@@ -292,6 +292,11 @@ struct rt_param {
 	/* Pointer to the page shared between userspace and kernel. */
 	struct control_page * ctrl_page;
 
+	/* backwards compatibility for other plugins */
+	struct bheap_node*	heap_node;
+	struct rt_job 		job_params;
+
+	/* for job queue support */
 	struct job_struct* running_job;
 
 	struct list_head queued_jobs; /* already released jobs */

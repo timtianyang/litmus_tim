@@ -379,11 +379,11 @@ static long __litmus_admit_task(struct task_struct* tsk)
 		printk(KERN_WARNING "litmus: no more heap node memory!?\n");
 
 		return -ENOMEM;
-	} /*else {
-		init the nodes in psn scheduler
-		bheap_node_init(&tsk_rt(tsk)->heap_node, tsk);
+	} else {
+		//init the nodes in psn scheduler
+		//bheap_node_init(&tsk_rt(tsk)->heap_node, tsk);
 	}
-	*/
+	
 	preempt_disable();
 
 	err = litmus->admit_task(tsk);
@@ -405,6 +405,7 @@ long litmus_admit_task(struct task_struct* tsk)
 
 	BUG_ON(is_realtime(tsk));
 
+	//tsk_rt(tsk)->heap_node = NULL;
 	tsk_rt(tsk)->running_job = NULL;
 	tsk_rt(tsk)->rel_heap = NULL;
 
@@ -425,8 +426,8 @@ long litmus_admit_task(struct task_struct* tsk)
 out:
 	if (retval) {
 		//TO-DO: clean up here
-		//if (tsk_rt(tsk)->heap_node)
-		//	bheap_node_free(tsk_rt(tsk)->heap_node);
+		if (tsk_rt(tsk)->heap_node)
+			bheap_node_free(tsk_rt(tsk)->heap_node);
 		if (tsk_rt(tsk)->rel_heap)
 			release_heap_free(tsk_rt(tsk)->rel_heap);
 	}
