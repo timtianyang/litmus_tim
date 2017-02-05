@@ -95,6 +95,15 @@ static inline struct task_struct* __take_ready(rt_domain_t* rt)
 		return NULL;
 }
 
+static inline struct job_struct* __take_ready_job(rt_domain_t* rt)
+{
+	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
+	if (hn)
+		return container_of(hn, struct job_struct, heap_node);
+	else
+		return NULL;
+}
+
 static inline struct task_struct* __peek_ready(rt_domain_t* rt)
 {
 	struct bheap_node* hn = bheap_peek(rt->order, &rt->ready_queue);

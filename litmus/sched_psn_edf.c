@@ -230,7 +230,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 {
 	psnedf_domain_t* 	pedf = local_pedf;
 	rt_domain_t*		edf  = &pedf->domain;
-	struct task_struct*	next;
+	struct job_struct*	next;
 
 	int 			out_of_time, sleep, preempt,
 				np, exists, blocks, resched;
@@ -248,7 +248,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	exists      = pedf->scheduled != NULL;
 	blocks      = exists && !is_current_running();
 	out_of_time = exists && budget_enforced(pedf->scheduled)
-			     && budget_exhausted(pedf->scheduled);
+			     && budget_exhausted_job(pedf->scheduled->rt_param->running_job);
 	np 	    = exists && is_np(pedf->scheduled);
 	sleep	    = exists && is_completed(pedf->scheduled);
 	preempt     = edf_preemption_needed(edf, prev);
@@ -291,22 +291,25 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		 * the appropriate queue.
 		 */
 		if (pedf->scheduled && !blocks)
-			requeue(pedf->scheduled, edf);
-		next = __take_ready(edf);
+			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param->running_job);
+		next = __take_ready_job(edf);
 	} else
 		/* Only override Linux scheduler if we have a real-time task
 		 * scheduled that needs to continue.
 		 */
 		if (exists)
-			next = prev;
+			pedf->scheduled = prev;
+
+	/* take tsk out of the job */
+	pedf->scheduled = bheap2task(next->heap_node);
 
 	if (next) {
+		next->rt_param->running_job = next; 
 		TRACE_TASK(next, "scheduled at %llu\n", litmus_clock());
 	} else {
 		TRACE("becoming idle at %llu\n", litmus_clock());
 	}
 
-	pedf->scheduled = next;
 	sched_state_task_picked();
 	raw_spin_unlock(&pedf->slock);
 
@@ -337,6 +340,8 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 	job = get_job();
 	job->job_params = t->rt_param.job_params; /* copy to a spcific job */
 	job->rt = t->rt_param;
+	/* link node to task */
+	bheap_node_init(&job->heap_node, t);
 
 	/* The task should be running in the queue, otherwise signal
 	 * code will try to wake it up with fatal consequences.
@@ -409,6 +414,7 @@ static void psnedf_task_block(struct task_struct *t)
 	TRACE_TASK(t, "block at %llu, state=%d\n", litmus_clock(), t->state);
 
 	BUG_ON(!is_realtime(t));
+	/* to-do */
 	BUG_ON(is_queued(t));
 }
 
@@ -725,7 +731,8 @@ static long psnedf_admit_task(struct task_struct* tsk)
 		INIT_LIST_HEAD(&job->jobq_elem);
 		job->heap_node = bheap_node_alloc(GFP_ATOMIC);
 		job->rt = NULL;
-		bheap_node_init(&job->heap_node, tsk);
+		/* node should be init with a task when released */
+		//bheap_node_init(&job->heap_node, tsk);
 		list_add_tail(&job->q_elem, depletedq);
 	    }
 
