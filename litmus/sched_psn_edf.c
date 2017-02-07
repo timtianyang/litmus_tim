@@ -57,8 +57,6 @@ static void psnedf_domain_init(psnedf_domain_t* pedf,
 			       release_jobs_t release,
 			       int cpu)
 {
-	int i;
-
 	edf_domain_init(&pedf->domain, check, release);
 	pedf->cpu      		= cpu;
 	pedf->scheduled		= NULL;
@@ -66,7 +64,7 @@ static void psnedf_domain_init(psnedf_domain_t* pedf,
 	INIT_LIST_HEAD(&pedf->depletedq);
 }
 
-static inline struct rt_job *
+static inline struct job_struct*
 job_q_elem(struct list_head *elem)
 {
     /* take out job struct from depletedq*/
@@ -76,7 +74,7 @@ job_q_elem(struct list_head *elem)
 /*
  * get a job from the depletedq
  */
-static struct job_struct* get_job()
+static struct job_struct* get_job(void)
 {
     psnedf_domain_t* 	pedf = local_pedf;
     struct list_head *depletedq = &pedf->depletedq;
@@ -99,7 +97,7 @@ static void queue_job_to(struct job_struct* job, struct rt_param* rt)
 {
     struct list_head *iter;
 
-    list_for_each ( iter, rt->queued_jobs )
+    list_for_each ( iter, &rt->queued_jobs )
     {
 	struct job_struct* j = job_q_elem(iter);
 
@@ -109,7 +107,7 @@ static void queue_job_to(struct job_struct* job, struct rt_param* rt)
     list_add_tail(&job->jobq_elem, iter);
 }
 
-static void requeue(struct task_struct* t, struct job_struct* job, rt_domain_t *edf)
+static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_struct* job)
 {
 /*
 	if (t->state != TASK_RUNNING)
@@ -248,7 +246,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	exists      = pedf->scheduled != NULL;
 	blocks      = exists && !is_current_running();
 	out_of_time = exists && budget_enforced(pedf->scheduled)
-			     && budget_exhausted_job(pedf->scheduled->rt_param->running_job);
+			     && budget_exhausted_job(pedf->scheduled->rt_param.running_job, pedf->scheduled);
 	np 	    = exists && is_np(pedf->scheduled);
 	sleep	    = exists && is_completed(pedf->scheduled);
 	preempt     = edf_preemption_needed(edf, prev);
@@ -291,7 +289,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		 * the appropriate queue.
 		 */
 		if (pedf->scheduled && !blocks)
-			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param->running_job);
+			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param.running_job);
 		next = __take_ready_job(edf);
 	} else
 		/* Only override Linux scheduler if we have a real-time task
@@ -300,20 +298,21 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		if (exists)
 			pedf->scheduled = prev;
 
-	/* take tsk out of the job */
-	pedf->scheduled = bheap2task(next->heap_node);
 
 	if (next) {
-		next->rt_param->running_job = next; 
-		TRACE_TASK(next, "scheduled at %llu\n", litmus_clock());
+		next->rt->running_job = next;
+		/* take tsk out of the job */
+		pedf->scheduled = bheap2task(next->heap_node); 
+		TRACE_TASK(bheap2task(next->heap_node), "scheduled at %llu\n", litmus_clock());
 	} else {
+		pedf->scheduled = NULL;
 		TRACE("becoming idle at %llu\n", litmus_clock());
 	}
 
 	sched_state_task_picked();
 	raw_spin_unlock(&pedf->slock);
 
-	return next;
+	return next ? pedf->scheduled : NULL;
 }
 /*
  * Call back for updating a task. Return 0 if succeeds.
@@ -339,7 +338,7 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 	release_at(t, litmus_clock());
 	job = get_job();
 	job->job_params = t->rt_param.job_params; /* copy to a spcific job */
-	job->rt = t->rt_param;
+	job->rt = &t->rt_param;
 	/* link node to task */
 	bheap_node_init(&job->heap_node, t);
 
@@ -351,11 +350,11 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 		/* there shouldn't be anything else scheduled at the time */
 		BUG_ON(pedf->scheduled);
 		pedf->scheduled = t;
-		t->rt_param->running_job = job;
+		t->rt_param.running_job = job;
 	} else {
 		/* later useful in mode-change */
-		t->rt_param->running_job = NULL;
-		queue_job_to(job, t->rt_param);
+		t->rt_param.running_job = NULL;
+		queue_job_to(job, &t->rt_param);
 		/* !is_scheduled means it is not scheduled right now, but it
 		 * does not mean that it is suspended. If it is not suspended,
 		 * it still needs to be requeued. If it is suspended, there is
@@ -717,6 +716,9 @@ static long psnedf_deactivate_plugin(void)
 
 static long psnedf_admit_task(struct task_struct* tsk)
 {
+	psnedf_domain_t* 	pedf = local_pedf;
+	struct list_head *depletedq = &pedf->depletedq;
+	int i;
 	if (task_cpu(tsk) == tsk->rt_param.task_params.cpu
 #ifdef CONFIG_RELEASE_MASTER
 	    /* don't allow tasks on release master CPU */
@@ -733,7 +735,7 @@ static long psnedf_admit_task(struct task_struct* tsk)
 		job->rt = NULL;
 		/* node should be init with a task when released */
 		//bheap_node_init(&job->heap_node, tsk);
-		list_add_tail(&job->q_elem, depletedq);
+		list_add_tail(&job->jobq_elem, depletedq);
 	    }
 
 	    INIT_LIST_HEAD(&tsk->rt_param.queued_jobs);

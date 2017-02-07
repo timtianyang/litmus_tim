@@ -67,6 +67,8 @@ void bheap_delete(bheap_prio_t higher_prio,
 /* allocate from memcache */
 struct bheap_node* bheap_node_alloc(int gfp_flags);
 void bheap_node_free(struct bheap_node* hn);
+struct job_struct* job_struct_alloc(int gfp_flags);
+void job_struct_free(struct job_struct* hn);
 
 /* allocate a heap node for value and insert into the heap */
 int bheap_add(bheap_prio_t higher_prio, struct bheap* heap,

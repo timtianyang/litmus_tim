@@ -99,7 +99,7 @@ static inline struct job_struct* __take_ready_job(rt_domain_t* rt)
 {
 	struct bheap_node* hn = bheap_take(rt->order, &rt->ready_queue);
 	if (hn)
-		return container_of(hn, struct job_struct, heap_node);
+		return container_of(&hn, struct job_struct, heap_node);
 	else
 		return NULL;
 }

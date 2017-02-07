@@ -10,10 +10,10 @@ inline static int budget_exhausted(struct task_struct* t)
 	return get_exec_time(t) >= get_exec_cost(t);
 }
 
-/* check if currently running job has exausted its budget */
-inline static int budget_exhausted_job(struct task_struct* t)
+/* check if a job has exausted its budget. t and j are associated */
+inline static int budget_exhausted_job(struct job_struct* j, struct task_struct* t)
 {
-	return get_exec_time_job(t->rt_param->running_job) >= get_exec_cost(t);
+	return get_exec_time_job(j) >= get_exec_cost(t);
 }
 
 inline static lt_t budget_remaining(struct task_struct* t)

@@ -324,7 +324,7 @@ void __add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct
 		"to ready queue at %llu\n",
 		new->comm, new->pid,
 		get_exec_cost(new), get_rt_period(new), get_rt_relative_deadline(new),
-		get_release_job(new), litmus_clock());
+		get_release_job(job), litmus_clock());
 
 	BUG_ON(bheap_node_in_heap(job->heap_node));
 
