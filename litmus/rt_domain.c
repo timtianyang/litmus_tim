@@ -379,3 +379,7 @@ void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_str
 
 	arm_release_timer(rt);
 }
+
+/* cancel_future_release - remove a task from the rt release queue
+ *
+ */

@@ -72,9 +72,9 @@ job_q_elem(struct list_head *elem)
 }
 
 /*
- * get a job from the depletedq
+ * get a job from the depletedq, and link it to t
  */
-static struct job_struct* get_job(void)
+static struct job_struct* get_job(struct task_struct* t)
 {
     psnedf_domain_t* 	pedf = local_pedf;
     struct list_head *depletedq = &pedf->depletedq;
@@ -89,10 +89,14 @@ static struct job_struct* get_job(void)
 	TRACE("not enough jobs at %llu\n", litmus_clock()); 
 
     BUG_ON(!job);
+    job->job_params = t->rt_param.job_params; /* copy to a spcific job */
+    job->rt = &t->rt_param;
+	/* link node to task */
+    bheap_node_init(&job->heap_node, t);
     return job;
 }
 
-/* queues job in EDF order */
+/* queues job in EDF order to a task */
 static void queue_job_to(struct job_struct* job, struct rt_param* rt)
 {
     struct list_head *iter;
@@ -120,12 +124,53 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 
 		add_release(edf, t);
 */
+	if (t->state != TASK_RUNNING)
+		TRACE_TASK(t, "requeue: !TASK_RUNNING\n");
 	job->rt->completed = 0;
-	/* TO_DO: modify queuing interface, which involes changing other plugins */
+	/* TO_DO: modify job release mechanisms */
 	if ( lt_before_eq(job->job_params.release, litmus_clock()) )
 	   __add_ready_job(edf, t, job);
 	else
 	   add_release_job(edf, t, job); 
+}
+
+/* find job from a node reference */
+static inline struct job_struct* node2job(struct heap_node* hn)
+{
+    return hn ? container_of(hn, struct job_struct, heap_node) : NULL;
+}
+
+static inline struct task_struct* job2task(struct job_struct* job)
+{
+    return job ? bheap2task(job->heap_node) : NULL;
+}
+
+static inline void recycle_job(struct job_struct* job)
+{
+    psnedf_domain_t* 	pedf = local_pedf;
+    struct list_head *depletedq = &pedf->depletedq;
+
+    list_del_init(&job->jobq_elem);
+    list_add_tail(&job->jobq_elem, depletedq); 
+}
+
+/*
+ * recycle all queued jobs for a rt_param except the currently running one.
+ * it should be taken care of somewhere else.
+ */
+static inline void recycle_all_queued_jobs(struct task_struct* tsk)
+{
+    struct list_head *iter, *tmp;
+    struct rt_param* rt = &tsk->rt_param;
+
+    list_for_each_safe ( iter, tmp, &rt->queued_jobs )
+    {
+        struct job_struct* job = job_q_elem(iter);
+
+        if ( rt->running_job != job )
+            recycle_job(job);
+    }
+
 }
 
 /* we assume the lock is being held */
@@ -221,6 +266,8 @@ static void job_completion(struct task_struct* t, int forced)
 	TRACE_TASK(t, "job_completion(forced=%d).\n", forced);
 
 	tsk_rt(t)->completed = 0;
+	recycle_job(t->rt_param.running_job);
+	t->rt_param.running_job = NULL;
 	prepare_for_next_period(t);
 }
 
@@ -273,6 +320,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	 * this.
 	 */
 	if (!np && (out_of_time || sleep)) {
+		/* running job is set to NULL, recycled to depletedq inside */
 		job_completion(pedf->scheduled, !sleep);
 		resched = 1;
 	}
@@ -290,7 +338,14 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		 */
 		if (pedf->scheduled && !blocks)
 			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param.running_job);
-		next = __take_ready_job(edf);
+		else
+		{
+		    /* the current running task blocks. not sure whether block() is called
+		     * first or this is called first. clear the job queue for this task.
+		     */
+		}
+		pedf->scheduled->rt_param.running_job = NULL;
+		next = node2job(__take_ready_node(edf));
 	} else
 		/* Only override Linux scheduler if we have a real-time task
 		 * scheduled that needs to continue.
@@ -298,16 +353,13 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		if (exists)
 			pedf->scheduled = prev;
 
-
 	if (next) {
-		next->rt->running_job = next;
-		/* take tsk out of the job */
-		pedf->scheduled = bheap2task(next->heap_node); 
-		TRACE_TASK(bheap2task(next->heap_node), "scheduled at %llu\n", litmus_clock());
-	} else {
-		pedf->scheduled = NULL;
+		next->rt->running_job = next; 
+		TRACE_TASK(bheap2task(job2task(next), "scheduled at %llu\n", litmus_clock());
+	} else
 		TRACE("becoming idle at %llu\n", litmus_clock());
-	}
+
+	pedf->scheduled = job2task(next);
 
 	sched_state_task_picked();
 	raw_spin_unlock(&pedf->slock);
@@ -336,12 +388,8 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 
 	/* setup job parameters */
 	release_at(t, litmus_clock());
-	job = get_job();
-	job->job_params = t->rt_param.job_params; /* copy to a spcific job */
-	job->rt = &t->rt_param;
-	/* link node to task */
-	bheap_node_init(&job->heap_node, t);
-
+	job = get_job(t);
+	
 	/* The task should be running in the queue, otherwise signal
 	 * code will try to wake it up with fatal consequences.
 	 */
@@ -361,7 +409,8 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 		 * nothing that we need to do as it will be handled by the
 		 * wake_up() handler. */
 		if (on_rq) {
-			requeue(t, edf);
+			//requeue(t, edf);
+			requeue_job(t, edf, job);
 			/* maybe we have to reschedule */
 			psnedf_preempt_check(pedf);
 		}
@@ -378,7 +427,8 @@ static void psnedf_task_wake_up(struct task_struct *task)
 
 	TRACE_TASK(task, "wake_up at %llu\n", litmus_clock());
 	raw_spin_lock_irqsave(&pedf->slock, flags);
-	BUG_ON(is_queued(task));
+	//BUG_ON(is_queued(task));
+	//TO-DO check queued jobs
 	now = litmus_clock();
 	if (is_sporadic(task) && is_tardy(task, now)
 #ifdef CONFIG_LITMUS_LOCKING
@@ -399,8 +449,18 @@ static void psnedf_task_wake_up(struct task_struct *task)
 	 * and won.
 	 */
 	if (pedf->scheduled != task) {
-		requeue(task, edf);
+		/* the blocking task(running) is descheduled already */
+		/* because all jobs are removed when it blocked
+		 * release a new job and add back to queue
+		 */
+		struct job_struct* job = get_job(task);
+		/* to-do: use release job here instead */
+		requeue_job(task, edf, job);
 		psnedf_preempt_check(pedf);
+	}
+	else /* the blocking task(running) is still not descheduled */
+	{
+	    //TO_DO: in schedule, when blocked, remove the running job from task.
 	}
 
 	raw_spin_unlock_irqrestore(&pedf->slock, flags);
@@ -413,8 +473,9 @@ static void psnedf_task_block(struct task_struct *t)
 	TRACE_TASK(t, "block at %llu, state=%d\n", litmus_clock(), t->state);
 
 	BUG_ON(!is_realtime(t));
-	/* to-do */
-	BUG_ON(is_queued(t));
+	/* remove all queued jobs */
+	recycle_all_queued_jobs(t);
+	//BUG_ON(is_queued(t));
 }
 
 static void psnedf_task_exit(struct task_struct * t)
@@ -780,6 +841,9 @@ static int __init init_psn_edf(void)
 				   psnedf_check_resched,
 				   NULL, i);
 	}
+	/* TO-DO 
+	 * add domain release function
+	 */
 	return register_sched_plugin(&psn_edf_plugin);
 }
 
