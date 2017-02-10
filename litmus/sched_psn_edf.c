@@ -91,8 +91,8 @@ static struct job_struct* get_job(struct task_struct* t)
     BUG_ON(!job);
     job->job_params = t->rt_param.job_params; /* copy to a spcific job */
     job->rt = &t->rt_param;
-	/* link node to task */
-    bheap_node_init(&job->heap_node, t);
+	/* link node to job */
+    bheap_node_init(&job->heap_node, job);
     return job;
 }
 
@@ -135,14 +135,16 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 }
 
 /* find job from a node reference */
-static inline struct job_struct* node2job(struct heap_node* hn)
+static inline struct job_struct* node2job(struct bheap_node* hn)
 {
-    return hn ? container_of(hn, struct job_struct, heap_node) : NULL;
+    return hn ? (struct job_struct*)(hn->value) : NULL;
 }
 
-static inline struct task_struct* job2task(struct job_struct* job)
+/* find task from a job reference */
+static inline struct task_struct* job2task(struct job_struct* j)
 {
-    return job ? bheap2task(job->heap_node) : NULL;
+    BUG_ON(!j);
+    return container_of(j->rt, struct task_struct, rt_param);
 }
 
 static inline void recycle_job(struct job_struct* job)
@@ -355,7 +357,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 
 	if (next) {
 		next->rt->running_job = next; 
-		TRACE_TASK(bheap2task(job2task(next), "scheduled at %llu\n", litmus_clock());
+		TRACE_TASK(job2task(next), "scheduled at %llu\n", litmus_clock());
 	} else
 		TRACE("becoming idle at %llu\n", litmus_clock());
 
