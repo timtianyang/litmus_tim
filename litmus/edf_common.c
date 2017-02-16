@@ -166,15 +166,76 @@ int edf_higher_prio(struct task_struct* first,
 	return 0; /* fall-through. prio(second_task) > prio(first_task) */
 }
 
+/* job queue support
+ * edf_higher_prio -  returns true if first has a higher EDF priority
+ *                    than second. Deadline ties are broken by PID.
+ *
+ * both first and second may be NULL
+ */
+int edf_job_higher_prio(struct job_struct* first,
+		    struct job_struct* second)
+{
+	struct job_struct *first_job = first;
+	struct job_struct *second_job = second;
+
+	/* There is no point in comparing a task to itself. */
+	if (first && first == second) {
+		TRACE_TASK(first,
+			   "WARNING: pointless edf priority comparison.\n");
+		return 0;
+	}
+
+
+	/* check for NULL jobs */
+	if (!first || !second)
+		return first && !second;
+
+	if (earlier_deadline_job(first_job, second_job)) {
+		return 1;
+	}
+	else if (get_deadline_job(first_job) == get_deadline_job(second_job)) {
+		/* Need to tie break. All methods must set pid_break to 0/1 if
+		 * first_task does not have priority over second_task.
+		 */
+		int pid_break;
+
+		/* CONFIG_EDF_PID_TIE_BREAK */
+		pid_break = 1; // fall through to tie-break by pid;
+
+		/* Tie break by pid */
+		if(pid_break) {
+			struct task_struct* first_task = job2task(first);
+			struct task_struct* second_task = job2task(second);
+			
+			if (first_task->pid < second_task->pid) {
+				return 1;
+			}
+			return 0;
+		}
+	}
+	return 0; /* fall-through. prio(second_task) > prio(first_task) */
+}
+
 int edf_ready_order(struct bheap_node* a, struct bheap_node* b)
 {
 	return edf_higher_prio(bheap2task(a), bheap2task(b));
+}
+
+int edf_job_ready_order(struct bheap_node* a, struct bheap_node* b)
+{
+	return edf_job_higher_prio((struct job_struct*)(a->value),(struct job_struct*)(b->value) );
 }
 
 void edf_domain_init(rt_domain_t* rt, check_resched_needed_t resched,
 		      release_jobs_t release)
 {
 	rt_domain_init(rt,  edf_ready_order, resched, release);
+}
+
+void edf_job_domain_init(rt_domain_t* rt, check_resched_needed_t resched,
+		      release_jobs_t release)
+{
+	rt_domain_init(rt,  edf_job_ready_order, resched, release);
 }
 
 /* need_to_preempt - check whether the task t needs to be preempted
@@ -197,4 +258,28 @@ int edf_preemption_needed(rt_domain_t* rt, struct task_struct *t)
 
 	/* make sure to get non-rt stuff out of the way */
 	return !is_realtime(t) || edf_higher_prio(__next_ready(rt), t);
+}
+
+/* job queue support
+ * need_to_preempt - check whether the task t needs to be preempted
+ *                   call only with irqs disabled and with  ready_lock acquired
+ *                   THIS DOES NOT TAKE NON-PREEMPTIVE SECTIONS INTO ACCOUNT!
+ */
+int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t)
+{
+	BUG_ON(!t->running_job);
+	/* we need the read lock for edf_ready_queue */
+	/* no need to preempt if there is nothing pending */
+	if (!__jobs_pending(rt))
+		return 0;
+	/* we need to reschedule if t doesn't exist */
+	if (!t)
+		return 1;
+
+	/* NOTE: We cannot check for non-preemptibility since we
+	 *       don't know what address space we're currently in.
+	 */
+
+	/* make sure to get non-rt stuff out of the way */
+	return !is_realtime(t) || edf_job_higher_prio(__next_ready_node(rt), t->running_job);
 }

@@ -74,6 +74,11 @@ static inline struct task_struct* __next_ready(rt_domain_t* rt)
 		return NULL;
 }
 
+static inline struct bheap_node* __next_ready_node(rt_domain_t* rt)
+{
+	return bheap_peek(rt->order, &rt->ready_queue);
+}
+
 void rt_domain_init(rt_domain_t *rt, bheap_prio_t order,
 		    check_resched_needed_t check,
 		    release_jobs_t relase);
@@ -115,9 +120,26 @@ static inline int  is_queued(struct task_struct *t)
 	return bheap_node_in_heap(tsk_rt(t)->heap_node);
 }
 
+/*
+ * job queue support. Checks if this task has any queued jobs
+ * on it's queue instead.1
+ */
+static inline int  has_queued(struct task_struct *t)
+{
+	return !list_empty(&t->rt_param.queued_jobs);
+}
+
 static inline void remove(rt_domain_t* rt, struct task_struct *t)
 {
 	bheap_delete(rt->order, &rt->ready_queue, tsk_rt(t)->heap_node);
+}
+
+/*
+ * job queue support, removes all queued jobs.
+ */
+static inline void remove_job(rt_domain_t* rt, struct bheap_node* node)
+{
+	bheap_delete(rt->order, &rt->ready_queue, node);
 }
 
 static inline void add_ready(rt_domain_t* rt, struct task_struct *new)

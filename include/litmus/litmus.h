@@ -133,10 +133,23 @@ static inline lt_t litmus_clock(void)
 #define earlier_release(a, b)  (lt_before(\
 	(a)->rt_param.job_params.release,\
 	(b)->rt_param.job_params.release))
+/* job queue support */
+#define earlier_deadline_job(a, b) (lt_before(\
+	(a)->job_params.deadline,\
+	(b)->job_params.deadline))
+#define earlier_release_job(a, b)  (lt_before(\
+	(a)->job_params.release,\
+	(b)->job_params.release))
 
 void preempt_if_preemptable(struct task_struct* t, int on_cpu);
 
 #define bheap2task(hn) ((struct task_struct*) hn->value)
+
+static inline struct task_struct* job2task(struct job_struct* j)
+{
+    BUG_ON(!j);
+    return container_of(j->rt, struct task_struct, rt_param);
+}
 
 #ifdef CONFIG_NP_SECTION
 
