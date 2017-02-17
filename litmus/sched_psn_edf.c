@@ -102,6 +102,7 @@ static inline void recycle_job(struct job_struct* job)
     psnedf_domain_t* 	pedf = local_pedf;
     struct list_head *depletedq = &pedf->depletedq;
 
+    /* break from task's queue */
     list_del_init(&job->jobq_elem);
     list_add_tail(&job->jobq_elem, depletedq); 
 }
@@ -140,9 +141,14 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 	job->rt->completed = 0;
 	/* TO_DO: modify job release mechanisms */
 	if ( lt_before_eq(job->job_params.release, litmus_clock()) )
+	{
+	    printk("add job %d to readyq\n", job->job_params.job_no);
 	   __add_ready_job(edf, t, job);
+	
+	}
 	else
 	{
+	    printk("add job %d to deplq\n", job->job_params.job_no);
 	    add_release_job(edf, t, job); 
 	    recycle_job(job);
 	}
@@ -278,6 +284,12 @@ static void job_completion(struct task_struct* t, int forced)
 	prepare_for_next_period(t);
 }
 
+static inline void print_job(struct job_struct* job)
+{
+    struct rt_job* rtj = &job->job_params;
+    printk("job %u release: %llu dl: %llu  exc: %llu sus: %llu\n", rtj->job_no, rtj->release, rtj->deadline, rtj->exec_time, rtj->last_suspension);
+}
+
 static struct task_struct* psnedf_schedule(struct task_struct * prev)
 {
 	psnedf_domain_t* 	pedf = local_pedf;
@@ -299,7 +311,10 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	BUG_ON(pedf->scheduled && !pedf->scheduled->rt_param.running_job);
 
 	if (smp_processor_id() == 2 && pedf->scheduled)
-		printk("cpu%d schedule\n",smp_processor_id());
+	{
+		printk("sched: ");
+		print_job(pedf->scheduled->rt_param.running_job);	
+	}
 	/* (0) Determine state */
 	exists      = pedf->scheduled != NULL;
 	blocks      = exists && !is_current_running();
@@ -335,6 +350,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 	//if (smp_processor_id() == 2)
 	//	printk("cpu%d pre-job_comp\n",smp_processor_id());
 	if (!np && (out_of_time || sleep)) {
+		printk("job_completion\n");
 		/* running job is set to NULL, recycled to depletedq inside */
 		job_completion(pedf->scheduled, !sleep);
 		resched = 1;
@@ -411,6 +427,8 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 	/* setup job parameters */
 	release_at(t, litmus_clock());
 	job = get_job(t);
+	printk("task new: ");
+	print_job(job);
 	
 	/* The task should be running in the queue, otherwise signal
 	 * code will try to wake it up with fatal consequences.
@@ -480,6 +498,8 @@ static void psnedf_task_wake_up(struct task_struct *task)
 		 * release a new job and add back to queue
 		 */
 		struct job_struct* job = get_job(task);
+		printk("wakeup get job: ");
+		print_job(job);
 		/* to-do: use release job here instead */
 		requeue_job(task, edf, job);
 		psnedf_preempt_check(pedf);
@@ -849,6 +869,25 @@ static long psnedf_admit_task(struct task_struct* tsk)
 	    return -EINVAL;
 }
 
+static void psn_edf_release_jobs(rt_domain_t* rt, struct bheap* tasks)
+{
+	struct bheap_node* node;
+	struct job_struct* job;
+	unsigned long flags;
+	
+	raw_spin_lock_irqsave(&rt->ready_lock, flags);
+	while ( (node = __take_node_from_relheap(rt, tasks)) )
+	{
+	    struct task_struct* tsk = bheap2task(node);
+	    
+	    job = get_job(tsk);
+	    bheap_insert(rt->order, &rt->ready_queue, job->heap_node);
+	    printk("released for pid %d\n", tsk->pid);
+	}
+	rt->check_resched(rt);
+	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
+}
+
 /*	Plugin object	*/
 static struct sched_plugin psn_edf_plugin __cacheline_aligned_in_smp = {
 	.plugin_name		= "PSN-EDF",
@@ -880,7 +919,7 @@ static int __init init_psn_edf(void)
 	for (i = 0; i < num_online_cpus(); i++) {
 		psnedf_domain_init(remote_pedf(i),
 				   psnedf_check_resched,
-				   NULL, i);
+				   psn_edf_release_jobs, i);
 	}
 	/* TO-DO 
 	 * add domain release function

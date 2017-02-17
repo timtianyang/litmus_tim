@@ -22,4 +22,14 @@ int edf_ready_order(struct bheap_node* a, struct bheap_node* b);
 
 int edf_preemption_needed(rt_domain_t* rt, struct task_struct *t);
 
+/* job queue support */
+void edf_job_domain_init(rt_domain_t* rt, check_resched_needed_t resched,
+		     release_jobs_t release);
+
+int edf_job_higher_prio(struct job_struct* first,
+		    struct job_struct* second);
+
+int edf_job_ready_order(struct bheap_node* a, struct bheap_node* b);
+
+int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t);
 #endif

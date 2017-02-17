@@ -16,12 +16,13 @@ static void update_time_litmus(struct rq *rq, struct task_struct *p)
 	if (unlikely((s64)delta < 0))
 		delta = 0;
 	/* per job counter */
-	p->rt_param.job_params.exec_time += delta;
+	//p->rt_param.job_params.exec_time += delta;
+	p->rt_param.running_job->job_params.exec_time +=delta;
 	/* task counter */
 	p->se.sum_exec_runtime += delta;
 	if (delta) {
 		TRACE_TASK(p, "charged %llu exec time (total:%llu, rem:%llu)\n",
-			delta, p->rt_param.job_params.exec_time, budget_remaining(p));
+			delta, p->rt_param.running_job->job_params.exec_time, budget_remaining(p));
 	}
 	/* sched_clock() */
 	p->se.exec_start = rq->clock;

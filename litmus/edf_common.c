@@ -179,11 +179,8 @@ int edf_job_higher_prio(struct job_struct* first,
 	struct job_struct *second_job = second;
 
 	/* There is no point in comparing a task to itself. */
-	if (first && first == second) {
-		TRACE_TASK(first,
-			   "WARNING: pointless edf priority comparison.\n");
+	if (first && first == second)
 		return 0;
-	}
 
 
 	/* check for NULL jobs */
@@ -267,7 +264,7 @@ int edf_preemption_needed(rt_domain_t* rt, struct task_struct *t)
  */
 int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t)
 {
-	BUG_ON(!t->running_job);
+	BUG_ON(!t->rt_param.running_job);
 	/* we need the read lock for edf_ready_queue */
 	/* no need to preempt if there is nothing pending */
 	if (!__jobs_pending(rt))
@@ -281,5 +278,7 @@ int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t)
 	 */
 
 	/* make sure to get non-rt stuff out of the way */
-	return !is_realtime(t) || edf_job_higher_prio(__next_ready_node(rt), t->running_job);
+	return !is_realtime(t) || edf_job_higher_prio((struct
+	job_struct*)__next_ready_node(rt)->value,
+	t->rt_param.running_job);
 }

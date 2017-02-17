@@ -105,6 +105,11 @@ static inline struct bheap_node* __take_ready_node(rt_domain_t* rt)
 	return bheap_take(rt->order, &rt->ready_queue);
 }
 
+static inline struct bheap_node* __take_node_from_relheap(rt_domain_t* rt, struct bheap* rel_heap)
+{
+    return bheap_take(rt->order, rel_heap);
+}
+
 static inline struct task_struct* __peek_ready(rt_domain_t* rt)
 {
 	struct bheap_node* hn = bheap_peek(rt->order, &rt->ready_queue);
