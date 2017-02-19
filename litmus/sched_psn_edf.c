@@ -140,7 +140,8 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 		TRACE_TASK(t, "requeue: !TASK_RUNNING\n");
 	job->rt->completed = 0;
 	/* TO_DO: modify job release mechanisms */
-	if ( lt_before_eq(job->job_params.release, litmus_clock()) )
+	//if ( lt_before_eq(job->job_params.release, litmus_clock()) )
+	if ( get_exec_time_job(job) < get_exec_cost(t) )
 	{
 	    printk("add job %d to readyq\n", job->job_params.job_no);
 	   __add_ready_job(edf, t, job);
@@ -876,13 +877,15 @@ static void psn_edf_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 	unsigned long flags;
 	
 	raw_spin_lock_irqsave(&rt->ready_lock, flags);
-	while ( (node = __take_node_from_relheap(rt, tasks)) )
+	node = __take_node_from_relheap(rt, tasks);
+	while ( node )
 	{
 	    struct task_struct* tsk = bheap2task(node);
 	    
 	    job = get_job(tsk);
 	    bheap_insert(rt->order, &rt->ready_queue, job->heap_node);
 	    printk("released for pid %d\n", tsk->pid);
+	    node = __take_node_from_relheap(rt, tasks);
 	}
 	rt->check_resched(rt);
 	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
