@@ -63,7 +63,6 @@ static enum hrtimer_restart on_release_timer(struct hrtimer *timer)
 
 	TS_RELEASE_START;
 
-
 	raw_spin_lock_irqsave(&rh->dom->release_lock, flags);
 	VTRACE("CB has the release_lock 0x%p\n", &rh->dom->release_lock);
 	/* remove from release queue */
@@ -191,12 +190,10 @@ static void arm_release_timer(rt_domain_t *_rt)
 	struct release_heap* rh;
 
 	VTRACE("arm_release_timer() at %llu\n", litmus_clock());
-	printk("0\n");
 	list_replace_init(&rt->tobe_released, &list);
-	printk("00\n");
 	list_for_each_safe(pos, safe, &list) {
 		/* pick task of work list */
-		printk("1\n");
+
 		t = list_entry(pos, struct task_struct, rt_param.list);
 		sched_trace_task_release(t);
 		list_del(pos);
@@ -204,7 +201,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 		/* put into release heap while holding release_lock */
 		raw_spin_lock(&rt->release_lock);
 		VTRACE_TASK(t, "I have the release_lock 0x%p\n", &rt->release_lock);
-		printk("2\n");
+
 		rh = get_release_heap(rt, t, 0);
 		if (!rh) {
 			/* need to use our own, but drop lock first */
@@ -224,7 +221,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 		BUG_ON(!tsk_rt(t)->heap_node);
 		bheap_insert(rt->order, &rh->heap, tsk_rt(t)->heap_node);
 		VTRACE_TASK(t, "arm_release_timer(): added to release heap\n");
-
+		printk("cpu %d added pid %d to release heap\n", smp_processor_id(),t->pid);
 		raw_spin_unlock(&rt->release_lock);
 		VTRACE_TASK(t, "Returned the release_lock 0x%p\n", &rt->release_lock);
 
@@ -232,7 +229,6 @@ static void arm_release_timer(rt_domain_t *_rt)
 		 * owner do the arming (which is the "first" task to reference
 		 * this release_heap anyway).
 		 */
-		 printk("3\n");
 		if (rh == tsk_rt(t)->rel_heap) {
 			VTRACE_TASK(t, "arming timer 0x%p\n", &rh->timer);
 
@@ -367,7 +363,6 @@ void __add_release(rt_domain_t* rt, struct task_struct *task)
 	TRACE_TASK(task, "add_release(), rel=%llu\n", get_release(task));
 	list_add(&tsk_rt(task)->list, &rt->tobe_released);
 	task->rt_param.domain = rt;
-
 	arm_release_timer(rt);
 }
 
@@ -379,9 +374,7 @@ void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_str
 {
 	TRACE_TASK(task, "add_release(), rel=%llu\n", get_release_job(j));
 	list_add(&tsk_rt(task)->list, &rt->tobe_released);
-	printk("aj1\n");
 	task->rt_param.domain = rt;
-	printk("aj2\n");
 	arm_release_timer(rt);
 }
 

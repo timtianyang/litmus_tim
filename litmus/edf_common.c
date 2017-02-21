@@ -182,7 +182,6 @@ int edf_job_higher_prio(struct job_struct* first,
 	if (first && first == second)
 		return 0;
 
-
 	/* check for NULL jobs */
 	if (!first || !second)
 		return first && !second;
@@ -195,7 +194,7 @@ int edf_job_higher_prio(struct job_struct* first,
 		 * first_task does not have priority over second_task.
 		 */
 		int pid_break;
-
+printk("pid_break\n");
 		/* CONFIG_EDF_PID_TIE_BREAK */
 		pid_break = 1; // fall through to tie-break by pid;
 
@@ -264,7 +263,8 @@ int edf_preemption_needed(rt_domain_t* rt, struct task_struct *t)
  */
 int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t)
 {
-	BUG_ON(!t->rt_param.running_job);
+	struct bheap_node* nn;
+
 	/* we need the read lock for edf_ready_queue */
 	/* no need to preempt if there is nothing pending */
 	if (!__jobs_pending(rt))
@@ -276,9 +276,9 @@ int edf_job_preemption_needed(rt_domain_t* rt, struct task_struct *t)
 	/* NOTE: We cannot check for non-preemptibility since we
 	 *       don't know what address space we're currently in.
 	 */
-
+	nn = __next_ready_node(rt);
 	/* make sure to get non-rt stuff out of the way */
-	return !is_realtime(t) || edf_job_higher_prio((struct
-	job_struct*)__next_ready_node(rt)->value,
-	t->rt_param.running_job);
+	return !is_realtime(t) || edf_job_higher_prio(
+		(nn ? (struct job_struct*)nn->value : NULL),
+		t->rt_param.running_job);
 }
