@@ -222,6 +222,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 		/* the following line is not compatible with other schedulers
 		   because it assumes different orders for jobs and tasks
 		*/
+		printk("*begin to insert node to releaseheap\n");
 		bheap_insert(rt->order_task, &rh->heap, tsk_rt(t)->heap_node);
 		VTRACE_TASK(t, "arm_release_timer(): added to release heap\n");
 		printk("cpu %d added pid %d to release heap\n", smp_processor_id(),t->pid);
