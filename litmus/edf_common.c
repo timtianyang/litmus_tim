@@ -200,9 +200,12 @@ printk("pid_break\n");
 
 		/* Tie break by pid */
 		if(pid_break) {
-			struct task_struct* first_task = job2task(first);
-			struct task_struct* second_task = job2task(second);
-			
+			struct task_struct* first_task;
+struct task_struct* second_task; 
+first_task = job2task(first);
+printk("pid1\n");
+			second_task = job2task(second);
+printk("pid2\n");
 			if (first_task->pid < second_task->pid) {
 				return 1;
 			}

@@ -56,6 +56,7 @@ void release_at(struct task_struct *t, lt_t start)
 	BUG_ON(!t);
 	setup_release(t, start);
 	tsk_rt(t)->completed = 0;
+	printk("pid %d release_at complete=0\n",t->pid);
 }
 
 void inferred_sporadic_job_release_at(struct task_struct *t, lt_t when)
@@ -89,7 +90,7 @@ long default_wait_for_release_at(lt_t release_time)
 	smp_wmb();
 	tsk_rt(t)->sporadic_release = 1;
 	local_irq_restore(flags);
-
+	printk("cpu %d default_wait_for_release_at\n", smp_processor_id());
 	return litmus->complete_job();
 }
 
@@ -103,6 +104,7 @@ long complete_job(void)
 	TRACE_CUR("job completion indicated at %llu\n", litmus_clock());
 	/* Mark that we do not excute anymore */
 	tsk_rt(current)->completed = 1;
+	printk("cpu %d pid %d complete_job complete=1\n", smp_processor_id(),current->pid);
 	/* call schedule, this will return when a new job arrives
 	 * it also takes care of preparing for the next release
 	 */
@@ -145,7 +147,7 @@ static long sleep_until_next_release(void)
 	if (lt_after(get_release(t), litmus_clock())) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		tsk_rt(t)->completed = 1;
-		preempt_enable_no_resched();
+    		preempt_enable_no_resched();
 		err = schedule_hrtimeout(&next_release, HRTIMER_MODE_ABS);
 		/* If we get woken by a signal, we return early.
 		 * This is intentional; we want to be able to kill tasks

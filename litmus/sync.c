@@ -123,6 +123,7 @@ asmlinkage long sys_wait_for_ts_release(void)
 	long ret = -EPERM;
 	struct task_struct *t = current;
 
+	printk("sys_wait_for_ts_release");
 	if (is_realtime(t))
 		ret = do_wait_for_ts_release();
 

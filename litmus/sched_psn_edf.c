@@ -99,7 +99,7 @@ static struct job_struct* get_job(struct task_struct* t)
 
 static inline void recycle_job(struct job_struct* job)
 {
-    psnedf_domain_t* 	pedf = local_pedf;
+    psnedf_domain_t* 	pedf = task_pedf(job2task(job));
     struct list_head *depletedq = &pedf->depletedq;
 
     /* break from task's queue */
@@ -138,9 +138,11 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 	BUG_ON(!job);
 	if (t->state != TASK_RUNNING)
 		TRACE_TASK(t, "requeue: !TASK_RUNNING\n");
-	job->rt->completed = 0;
+
 	/* TO_DO: modify job release mechanisms */
 	//if ( lt_before_eq(job->job_params.release, litmus_clock()) )
+	tsk_rt(t)->completed = 0;
+	printk("pid %d requeue complete=0\n", t->pid);
 	if ( get_exec_time_job(job) < get_exec_cost(t) )
 	{
 	    printk("cpu %d add pid %d job %d to readyq\n", smp_processor_id(),t->pid, job->job_params.job_no);
@@ -257,6 +259,7 @@ static int psnedf_preempt_check(psnedf_domain_t *pedf)
 {
 	printk("cpu %d check resched\n", smp_processor_id());
 	if (edf_job_preemption_needed(&pedf->domain, pedf->scheduled)) {
+		printk("cpu %d ready preempt\n",smp_processor_id());
 		preempt(pedf);
 		return 1;
 	} else
@@ -281,7 +284,9 @@ static void job_completion(struct task_struct* t, int forced)
 	sched_trace_task_completion(t, forced);
 	TRACE_TASK(t, "job_completion(forced=%d).\n", forced);
 
+	/* is this a bug in the official release? */
 	tsk_rt(t)->completed = 0;
+	printk("pid %d job_compl complete=0\n", t->pid);
 	recycle_job(t->rt_param.running_job);
 	prepare_for_next_period(t);
 }
@@ -373,7 +378,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		 */
 		if (smp_processor_id() == 2 && pedf->scheduled)
 		    printk("cpu %d status: blocks:%d resched:%d exists:%d preempt:%d sleep:%d out_of_time:%d\n",
-			smp_processor(), blocks, resched, exists, preempt, sleep, out_of_time);
+			smp_processor_id(), blocks, resched, exists, preempt, sleep, out_of_time);
 		
 		if (pedf->scheduled && !blocks)
 			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param.running_job);
@@ -461,6 +466,7 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 			//requeue(t, edf);
 			requeue_job(t, edf, job);
 			/* maybe we have to reschedule */
+			printk("cpu %d task_new check resched\n", smp_processor_id());
 			psnedf_preempt_check(pedf);
 		}
 	}
@@ -492,6 +498,9 @@ static void psnedf_task_wake_up(struct task_struct *task)
 			inferred_sporadic_job_release_at(task, now);
 	}
 
+	/* task is woken up so mark this. It's used in schedule() */
+	tsk_rt(task)->completed = 0;
+	printk("pid %d wake_up complete=0\n", task->pid);
 	/* Only add to ready queue if it is not the currently-scheduled
 	 * task. This could be the case if a task was woken up concurrently
 	 * on a remote CPU before the executing CPU got around to actually
@@ -508,6 +517,7 @@ static void psnedf_task_wake_up(struct task_struct *task)
 		print_job(job);
 		/* to-do: use release job here instead */
 		requeue_job(task, edf, job);
+		printk("cpu %d wakeup check resched\n",smp_processor_id());
 		psnedf_preempt_check(pedf);
 	}
 	else /* the blocking task(running) is still not descheduled */
@@ -548,6 +558,7 @@ static void psnedf_task_exit(struct task_struct * t)
 		    /* running job is recycled in schedule() */
 		    if ( t->rt_param.running_job != job )
 		    {
+			//TO-DO: when a release is scheduled?
 			remove_job(edf, job->heap_node);
 			recycle_job(job);
 		    }
@@ -557,7 +568,7 @@ static void psnedf_task_exit(struct task_struct * t)
 		pedf->scheduled = NULL;
 
 	TRACE_TASK(t, "RIP, now reschedule\n");
-
+	printk("cpu %d preempt on exit\n",smp_processor_id());
 	preempt(pedf);
 	raw_spin_unlock_irqrestore(&pedf->slock, flags);
 }

@@ -43,8 +43,10 @@ typedef struct _rt_domain {
 	/* how do we release jobs? */
 	release_jobs_t			release_jobs;
 
-	/* how are tasks ordered in the ready queue? */
+	/* how are jobs ordered in the ready queue? */
 	bheap_prio_t			order;
+	/* how are tasks ordered in the release queue? */
+	bheap_prio_t			order_task;
 } rt_domain_t;
 
 struct release_heap {
@@ -82,6 +84,12 @@ static inline struct bheap_node* __next_ready_node(rt_domain_t* rt)
 void rt_domain_init(rt_domain_t *rt, bheap_prio_t order,
 		    check_resched_needed_t check,
 		    release_jobs_t relase);
+
+void rt_job_domain_init(rt_domain_t *rt,
+		    bheap_prio_t order_job,
+		    bheap_prio_t order_task,
+		    check_resched_needed_t check,
+		    release_jobs_t release);
 
 void __add_ready(rt_domain_t* rt, struct task_struct *new);
 void __merge_ready(rt_domain_t* rt, struct bheap *tasks);

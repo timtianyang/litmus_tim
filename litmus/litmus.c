@@ -241,6 +241,7 @@ asmlinkage long sys_complete_job(void)
 	/* The plugin has to put the task into an
 	 * appropriate queue and call schedule
 	 */
+	 printk("sys complete_job\n");
 	retval = litmus->complete_job();
       out:
 	return retval;

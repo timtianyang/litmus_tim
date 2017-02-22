@@ -219,7 +219,10 @@ static void arm_release_timer(rt_domain_t *_rt)
 			rh = get_release_heap(rt, t, 1);
 		}
 		BUG_ON(!tsk_rt(t)->heap_node);
-		bheap_insert(rt->order, &rh->heap, tsk_rt(t)->heap_node);
+		/* the following line is not compatible with other schedulers
+		   because it assumes different orders for jobs and tasks
+		*/
+		bheap_insert(rt->order_task, &rh->heap, tsk_rt(t)->heap_node);
 		VTRACE_TASK(t, "arm_release_timer(): added to release heap\n");
 		printk("cpu %d added pid %d to release heap\n", smp_processor_id(),t->pid);
 		raw_spin_unlock(&rt->release_lock);
@@ -297,6 +300,43 @@ void rt_domain_init(rt_domain_t *rt,
 	rt->order		= order;
 }
 
+void rt_job_domain_init(rt_domain_t *rt,
+		    bheap_prio_t order_job,
+		    bheap_prio_t order_task,
+		    check_resched_needed_t check,
+		    release_jobs_t release)
+{
+	int i;
+
+	BUG_ON(!rt);
+	if (!check)
+		check = dummy_resched;
+	if (!release)
+		release = default_release_jobs;
+	if (!order_job)
+		order_job = dummy_order;
+	if (!order_task)
+		order_task = dummy_order;
+
+#ifdef CONFIG_RELEASE_MASTER
+	rt->release_master = NO_CPU;
+#endif
+
+	bheap_init(&rt->ready_queue);
+	INIT_LIST_HEAD(&rt->tobe_released);
+	for (i = 0; i < RELEASE_QUEUE_SLOTS; i++)
+		INIT_LIST_HEAD(&rt->release_queue.slot[i]);
+
+	raw_spin_lock_init(&rt->ready_lock);
+	raw_spin_lock_init(&rt->release_lock);
+	raw_spin_lock_init(&rt->tobe_lock);
+
+	rt->check_resched 	= check;
+	rt->release_jobs	= release;
+	rt->order		= order_job;
+	rt->order_task		= order_task;
+}
+
 /* add_ready - add a real-time task to the rt ready queue. It must be runnable.
  * @new:       the newly released task
  */
@@ -329,6 +369,7 @@ void __add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct
 	BUG_ON(bheap_node_in_heap(job->heap_node));
 
 	bheap_insert(rt->order, &rt->ready_queue, job->heap_node);
+	printk("cpu %d add_ready check resched\n", smp_processor_id());
 	rt->check_resched(rt);
 }
 

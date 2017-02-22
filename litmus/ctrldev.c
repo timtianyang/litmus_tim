@@ -206,6 +206,7 @@ static long litmus_ctrl_ioctl(struct file *filp,
 		return sys_wait_for_job_release(arg);
 
 	case LRT_wait_for_ts_release:
+		printk("litmus.c wait_for_ts_release\n");
 		return sys_wait_for_ts_release();
 
 	case LRT_release_ts:
