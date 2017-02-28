@@ -203,9 +203,9 @@ printk("pid_break\n");
 			struct task_struct* first_task;
 struct task_struct* second_task; 
 first_task = job2task(first);
-printk("pid1\n");
+//printk("pid1\n");
 			second_task = job2task(second);
-printk("pid2\n");
+//printk("pid2\n");
 			if (first_task->pid < second_task->pid) {
 				return 1;
 			}

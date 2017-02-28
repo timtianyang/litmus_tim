@@ -300,6 +300,7 @@ struct rt_param {
 	struct job_struct* running_job;
 
 	struct list_head queued_jobs; /* already released jobs */
+	int num_jobs;
 };
 
 #endif

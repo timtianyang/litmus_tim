@@ -56,7 +56,7 @@ void release_at(struct task_struct *t, lt_t start)
 	BUG_ON(!t);
 	setup_release(t, start);
 	tsk_rt(t)->completed = 0;
-	printk("pid %d release_at complete=0\n",t->pid);
+	//printk("pid %d release_at complete=0\n",t->pid);
 }
 
 void inferred_sporadic_job_release_at(struct task_struct *t, lt_t when)
@@ -104,7 +104,7 @@ long complete_job(void)
 	TRACE_CUR("job completion indicated at %llu\n", litmus_clock());
 	/* Mark that we do not excute anymore */
 	tsk_rt(current)->completed = 1;
-	printk("cpu %d pid %d complete_job complete=1\n", smp_processor_id(),current->pid);
+	//printk("cpu %d pid %d complete_job complete=1\n", smp_processor_id(),current->pid);
 	/* call schedule, this will return when a new job arrives
 	 * it also takes care of preparing for the next release
 	 */
