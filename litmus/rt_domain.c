@@ -62,14 +62,15 @@ static enum hrtimer_restart on_release_timer(struct hrtimer *timer)
 	VTRACE("on_release_timer(0x%p) starts.\n", timer);
 
 	TS_RELEASE_START;
-
+//printk("cpu%d tryinging release_lock\n", smp_processor_id());
 	raw_spin_lock_irqsave(&rh->dom->release_lock, flags);
+//printk("cpu%d has release_lock\n", smp_processor_id());
 	VTRACE("CB has the release_lock 0x%p\n", &rh->dom->release_lock);
 	/* remove from release queue */
 	list_del(&rh->list);
 	raw_spin_unlock_irqrestore(&rh->dom->release_lock, flags);
 	VTRACE("CB returned release_lock 0x%p\n", &rh->dom->release_lock);
-
+//printk("cpu%d return release_lock\n", smp_processor_id());
 	/* call release callback */
 	rh->dom->release_jobs(rh->dom, &rh->heap);
 	/* WARNING: rh can be referenced from other CPUs from now on. */
@@ -164,7 +165,10 @@ static void reinit_release_heap(struct task_struct* t)
 	 * WARNING: If the CPU still holds the release_lock at this point,
 	 *          deadlock may occur!
 	 */
-	BUG_ON(hrtimer_cancel(&rh->timer));
+	 /* hey as long as the release_lock is not held, it should be ok. 
+	  * the release mechanism calls this with nested locks
+	 */
+	//BUG_ON(hrtimer_cancel(&rh->timer));
 
 	/* initialize */
 	bheap_init(&rh->heap);
@@ -193,47 +197,58 @@ static void arm_release_timer(rt_domain_t *_rt)
 	list_replace_init(&rt->tobe_released, &list);
 	list_for_each_safe(pos, safe, &list) {
 		/* pick task of work list */
-
+//printk("arming\n");
 		t = list_entry(pos, struct task_struct, rt_param.list);
 		sched_trace_task_release(t);
+		/* del_init is needed because of the check in add_release_job */
 		list_del(pos);
 
 		/* put into release heap while holding release_lock */
 		raw_spin_lock(&rt->release_lock);
+//printk("cpu%d got releaes_lock\n",smp_processor_id());
 		VTRACE_TASK(t, "I have the release_lock 0x%p\n", &rt->release_lock);
-
 		rh = get_release_heap(rt, t, 0);
+//printk("cpu%d release_heap1\n",smp_processor_id());
 		if (!rh) {
 			/* need to use our own, but drop lock first */
 			raw_spin_unlock(&rt->release_lock);
+//printk("cpu%d return releaes_lock\n",smp_processor_id());
 			VTRACE_TASK(t, "Dropped release_lock 0x%p\n",
 				    &rt->release_lock);
 
 			reinit_release_heap(t);
 			VTRACE_TASK(t, "release_heap ready\n");
-
+//printk("cpu%d tryinging releaes_lock\n",smp_processor_id());
 			raw_spin_lock(&rt->release_lock);
+//printk("cpu%d got releaes_lock\n",smp_processor_id());
 			VTRACE_TASK(t, "Re-acquired release_lock 0x%p\n",
 				    &rt->release_lock);
 
 			rh = get_release_heap(rt, t, 1);
+//printk("cpu%d rh2\n",smp_processor_id());
 		}
+//printk("cpu%d rh3\n",smp_processor_id());
 		BUG_ON(!tsk_rt(t)->heap_node);
 		/* the following line is not compatible with other schedulers
 		   because it assumes different orders for jobs and tasks
 		*/
 		//printk("*begin to insert node to releaseheap\n");
 		bheap_insert(rt->order_task, &rh->heap, tsk_rt(t)->heap_node);
+		/* keep track of the assigned release heap for later remove in add_release */
+		tsk_rt(t)->cur_rel_heap = rh;
+
 		VTRACE_TASK(t, "arm_release_timer(): added to release heap\n");
 		//printk("cpu %d added pid %d to release heap\n", smp_processor_id(),t->pid);
 		raw_spin_unlock(&rt->release_lock);
 		VTRACE_TASK(t, "Returned the release_lock 0x%p\n", &rt->release_lock);
-
+//printk("released release_lock\n");
 		/* To avoid arming the timer multiple times, we only let the
 		 * owner do the arming (which is the "first" task to reference
 		 * this release_heap anyway).
 		 */
 		if (rh == tsk_rt(t)->rel_heap) {
+printk("arm release for pid %d at %llu\n", t->pid, rh->release_time);
+
 			VTRACE_TASK(t, "arming timer 0x%p\n", &rh->timer);
 
 			if (!hrtimer_is_hres_active(&rh->timer)) {
@@ -397,6 +412,11 @@ void __add_release_on(rt_domain_t* rt, struct task_struct *task,
 }
 #endif
 
+void __remove_release(rt_domain_t* rt, struct task_struct *task)
+{
+    bheap_delete(rt->order_task, &tsk_rt(task)->cur_rel_heap->heap, tsk_rt(task)->heap_node);
+}
+
 /* add_release - add a real-time task to the rt release queue.
  * @task:        the sleeping task
  */
@@ -410,13 +430,23 @@ void __add_release(rt_domain_t* rt, struct task_struct *task)
 
 /* add_release - add a real-time task to the rt release queue.
  * @task:        the sleeping task
- * the only difference is the trace because this is not affected by job queue
+ * it also checks if it is already scheduled for releasing during mode change
+ * if it is, then it removes the old release and update to the new release
  */
 void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* j)
 {
 	TRACE_TASK(task, "add_release(), rel=%llu\n", get_release_job(j));
+	//BUG_ON( !list_empty(&tsk_rt(task)->list));
+	if ( bheap_node_in_heap(tsk_rt(task)->heap_node) )
+	{
+	    printk("**rescheduling a future release!\n");
+	    /* FIX-ME */
+	    __remove_release(rt, task);
+    	}
+
 	list_add(&tsk_rt(task)->list, &rt->tobe_released);
 	task->rt_param.domain = rt;
+//	printk("now calling arm\n");
 	arm_release_timer(rt);
 }
 

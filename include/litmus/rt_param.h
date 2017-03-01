@@ -284,7 +284,12 @@ struct rt_param {
 	 *          implementation).
 	 */
 	struct release_heap*	rel_heap;
-
+	/* job queue support.
+	 * it keeps track of the current assigned relase_heap and it can be used
+	 * to remove it's future release during mode_change protocol.
+	 * the above heap is per_task relase_heap and the task might not be in it.
+	 */
+	struct release_heap*	cur_rel_heap;
 	/* Used by rt_domain to queue task in release list.
 	 */
 	struct list_head list;

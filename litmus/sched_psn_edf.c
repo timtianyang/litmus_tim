@@ -160,7 +160,6 @@ static void requeue_job(struct task_struct* t, rt_domain_t *edf, struct job_stru
 	else
 	{
 	    printk("cpu %d add pid %d job %d to deplq\n", smp_processor_id(), t->pid, job->job_params.job_no);
-	    add_release_job(edf, t, job); 
 	    recycle_job(job);
 	}
 }
@@ -296,8 +295,6 @@ static void job_completion(struct task_struct* t, int forced)
 	/* is this a bug in the official release? */
 	tsk_rt(t)->completed = 0;
 	//printk("pid %d job_compl complete=0\n", t->pid);
-	//recycle_job(t->rt_param.running_job);
-	prepare_for_next_period(t);
 }
 
 static inline void print_job(struct job_struct* job)
@@ -452,6 +449,7 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 	/* setup job parameters */
 	release_at(t, litmus_clock());
 	job = get_job(t);
+	prepare_for_next_period(t);
 	printk("task_new release cpu %d: ", smp_processor_id());
 	print_job(job);
 	
@@ -464,6 +462,7 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 		BUG_ON(pedf->scheduled);
 		pedf->scheduled = t;
 		t->rt_param.running_job = job;
+		add_release_job(edf, t, job);
 	} else {
 		/* later useful in mode-change */
 		t->rt_param.running_job = NULL;
@@ -475,6 +474,7 @@ static void psnedf_task_new(struct task_struct * t, int on_rq, int is_scheduled)
 		if (on_rq) {
 			//requeue(t, edf);
 			requeue_job(t, edf, job);
+			add_release_job(edf, t, job);
 			/* maybe we have to reschedule */
 			printk("cpu %d task_new check resched\n", smp_processor_id());
 			psnedf_preempt_check(pedf);
@@ -489,6 +489,7 @@ static void psnedf_task_wake_up(struct task_struct *task)
 	psnedf_domain_t* 	pedf = task_pedf(task);
 	rt_domain_t* 		edf  = task_edf(task);
 	lt_t			now;
+	struct job_struct* job;
 
 	TRACE_TASK(task, "wake_up at %llu\n", litmus_clock());
 	raw_spin_lock_irqsave(&pedf->slock, flags);
@@ -522,49 +523,58 @@ static void psnedf_task_wake_up(struct task_struct *task)
 		/* because all jobs are removed when it blocked
 		 * release a new job and add back to queue
 		 */
-		struct job_struct* job;
 		printk("wakeup release cpu %d ", smp_processor_id());
 		job = get_job(task);
-
+		prepare_for_next_period(task);
 		print_job(job);
 		/* to-do: use release job here instead */
 		requeue_job(task, edf, job);
-
+		add_release_job(edf, task, job);
 		//printk("cpu %d wakeup check resched\n",smp_processor_id());
 		psnedf_preempt_check(pedf);
 	}
 	else /* the blocking task(running) is still not descheduled */
 	{
+		prepare_for_next_period(task);
 	    //TO_DO: in schedule, when blocked, remove the running job from task.
-	}
+		add_release(edf,task);
+	}	
 	raw_spin_unlock_irqrestore(&pedf->slock, flags);
 	TRACE_TASK(task, "wake up done\n");
 }
 
 static void psnedf_task_block(struct task_struct *t)
 {
+	unsigned long flags;
+	psnedf_domain_t* 	pedf = task_pedf(t);
+	rt_domain_t*		edf = task_edf(t);
+
+	raw_spin_lock_irqsave(&pedf->slock, flags);
+
 	/* only running tasks can block, thus t is in no queue */
 	TRACE_TASK(t, "block at %llu, state=%d\n", litmus_clock(), t->state);
 
 	BUG_ON(!is_realtime(t));
 	/* remove all queued jobs */
 	printk("blocked cpu %d pid %d\n", smp_processor_id(), t->pid);
+	remove_release(edf, t);
 	recycle_all_queued_jobs(t);
 	//BUG_ON(is_queued(t));
+	raw_spin_unlock_irqrestore(&pedf->slock, flags);
 }
 
 static void psnedf_task_exit(struct task_struct * t)
 {
 	unsigned long flags;
 	psnedf_domain_t* 	pedf = task_pedf(t);
-	rt_domain_t*		edf;
+	rt_domain_t*		edf  = task_edf(t);
 
 	raw_spin_lock_irqsave(&pedf->slock, flags);
 	printk("exited cpu %d pid %d\n", smp_processor_id(), t->pid);
+	remove_release(edf, t);
 	if (has_queued(t)) {
 		struct list_head *iter, *tmp;
 		/* dequeue */
-		edf  = task_edf(t);
 		list_for_each_safe ( iter, tmp, &t->rt_param.queued_jobs )
 		{
 		    struct job_struct* job = job_q_elem(iter);
@@ -899,23 +909,40 @@ static long psnedf_admit_task(struct task_struct* tsk)
 
 static void psn_edf_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 {
-	struct bheap_node* node;
+	struct bheap_node* node, *head, *last = NULL;
 	struct job_struct* job;
 	unsigned long flags;
-	
+
 	raw_spin_lock_irqsave(&rt->ready_lock, flags);
 	node = __take_node_from_relheap(rt, tasks);
+	head = node;
 	while ( node )
 	{
 	    struct task_struct* tsk = bheap2task(node);
+
 	    printk("cpu %d pid %d timer release ", smp_processor_id(), tsk->pid);
 
 	    job = get_job(tsk);
 
 	    bheap_insert(rt->order, &rt->ready_queue, job->heap_node);
+	    prepare_for_next_period(tsk);
+
+	    /* linking up the heap_node temporarily for release setup */
+	    if ( last )
+		last->next = node;
+
+	    node->next = NULL;
+	    last = node;
 	    //print_job(job);
 	    node = __take_node_from_relheap(rt, tasks);
 	}
+
+	while (head)
+	{
+	    add_release(rt, bheap2task(head));
+	    head = head->next;
+	}
+
 	rt->check_resched(rt);
 	raw_spin_unlock_irqrestore(&rt->ready_lock, flags);
 }

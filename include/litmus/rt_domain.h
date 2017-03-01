@@ -98,6 +98,7 @@ void __add_release(rt_domain_t* rt, struct task_struct *task);
 /* job queue support */
 void __add_ready_job(rt_domain_t* rt, struct task_struct *new, struct job_struct* job);
 void __add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* job);
+void __remove_release(rt_domain_t* rt, struct task_struct *task);
 
 static inline struct task_struct* __take_ready(rt_domain_t* rt)
 {
@@ -196,16 +197,28 @@ static inline struct task_struct* take_ready(rt_domain_t* rt)
 static inline void add_release(rt_domain_t* rt, struct task_struct *task)
 {
 	unsigned long flags;
+	//printk("cpu%d trying to get tobelock\n",smp_processor_id());
 	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
 	__add_release(rt, task);
 	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
+	//printk("cpu%d release tobelock\n",smp_processor_id());
 }
 
 static inline void add_release_job(rt_domain_t* rt, struct task_struct *task, struct job_struct* j)
 {
 	unsigned long flags;
+	//printk("cpu%d trying to get tobelock\n",smp_processor_id());
 	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
 	__add_release_job(rt, task, j);
+	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
+	//printk("cpu%d release tobelock\n",smp_processor_id());
+}
+
+static inline void remove_release(rt_domain_t* rt, struct task_struct *task)
+{
+	unsigned long flags;
+	raw_spin_lock_irqsave(&rt->tobe_lock, flags);
+	__remove_release(rt, task);
 	raw_spin_unlock_irqrestore(&rt->tobe_lock, flags);
 }
 
