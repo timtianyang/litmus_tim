@@ -303,6 +303,8 @@ struct rt_param {
 
 	/* for job queue support */
 	struct job_struct* running_job;
+	/* used in tracing updated in recyle_job and requeue_job */
+	//struct job_struct* last_running_job;
 
 	struct list_head queued_jobs; /* already released jobs */
 	int num_jobs;

@@ -384,8 +384,7 @@ static struct task_struct* psnedf_schedule(struct task_struct * prev)
 		 * the appropriate queue.
 		 */
 		if (smp_processor_id() == 2 && pedf->scheduled)
-		    printk("cpu %d status: blocks:%d resched:%d exists:%d preempt:%d sleep:%d out_of_time:%d\n",
-			smp_processor_id(), blocks, resched, exists, preempt, sleep, out_of_time);
+		    //printk("cpu %d status: blocks:%d resched:%d exists:%d preempt:%d sleep:%d out_of_time:%d\n", smp_processor_id(), blocks, resched, exists, preempt, sleep, out_of_time);
 		
 		if (pedf->scheduled && !blocks)
 			requeue_job(pedf->scheduled, edf, pedf->scheduled->rt_param.running_job);
@@ -916,6 +915,7 @@ static void psn_edf_release_jobs(rt_domain_t* rt, struct bheap* tasks)
 	raw_spin_lock_irqsave(&rt->ready_lock, flags);
 	node = __take_node_from_relheap(rt, tasks);
 	head = node;
+printk("timer fired\n");
 	while ( node )
 	{
 	    struct task_struct* tsk = bheap2task(node);

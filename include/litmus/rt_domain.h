@@ -7,7 +7,7 @@
 
 #include <litmus/bheap.h>
 
-#define RELEASE_QUEUE_SLOTS 127 /* prime */
+#define RELEASE_QUEUE_SLOTS 7 /* prime */
 
 struct _rt_domain;
 

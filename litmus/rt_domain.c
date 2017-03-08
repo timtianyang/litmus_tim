@@ -120,13 +120,16 @@ static struct release_heap* get_release_heap(rt_domain_t *rt,
 
 	/* initialize pos for the case that the list is empty */
 	pos = rt->release_queue.slot[slot].next;
+//printk("loop\n");
 	list_for_each(pos, &rt->release_queue.slot[slot]) {
 		rh = list_entry(pos, struct release_heap, list);
+printk("scanning entry\n");
 		if (release_time == rh->release_time) {
 			/* perfect match -- this happens on hyperperiod
 			 * boundaries
 			 */
 			heap = rh;
+			printk("found one in slot %u\n", slot);
 			break;
 		} else if (lt_before(release_time, rh->release_time)) {
 			/* we need to insert a new node since rh is
@@ -135,6 +138,7 @@ static struct release_heap* get_release_heap(rt_domain_t *rt,
 			break;
 		}
 	}
+//printk("break\n");
 	if (!heap && use_task_heap) {
 		/* use pre-allocated release heap */
 		rh = tsk_rt(t)->rel_heap;
@@ -142,6 +146,7 @@ static struct release_heap* get_release_heap(rt_domain_t *rt,
 		rh->dom = rt;
 		rh->release_time = release_time;
 
+printk("listadd slot %u\n",slot);
 		/* add to release queue */
 		list_add(&rh->list, pos->prev);
 		heap = rh;
@@ -247,7 +252,7 @@ static void arm_release_timer(rt_domain_t *_rt)
 		 * this release_heap anyway).
 		 */
 		if (rh == tsk_rt(t)->rel_heap) {
-printk("arm release for pid %d at %llu\n", t->pid, rh->release_time);
+printk("armed release for pid %d at %llu\n", t->pid, rh->release_time);
 
 			VTRACE_TASK(t, "arming timer 0x%p\n", &rh->timer);
 
@@ -414,7 +419,16 @@ void __add_release_on(rt_domain_t* rt, struct task_struct *task,
 
 void __remove_release(rt_domain_t* rt, struct task_struct *task)
 {
-    bheap_delete(rt->order_task, &tsk_rt(task)->cur_rel_heap->heap, tsk_rt(task)->heap_node);
+    struct release_heap* rh = tsk_rt(task)->cur_rel_heap;
+    bheap_delete(rt->order_task, &rh->heap, tsk_rt(task)->heap_node);
+    /* if it's the last task left, remove the heap from the
+     * release queue
+     */
+    if ( bheap_empty(&rh->heap) )
+    {
+	printk("removed a rh\n");
+	list_del(&rh->list);
+    }
 }
 
 /* add_release - add a real-time task to the rt release queue.

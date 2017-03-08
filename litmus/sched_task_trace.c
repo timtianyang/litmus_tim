@@ -159,7 +159,10 @@ feather_callback void do_sched_trace_task_switch_to(unsigned long id,
 		rec = get_record(ST_SWITCH_TO, t);
 		if (rec) {
 			rec->data.switch_to.when      = now();
-			rec->data.switch_to.exec_time = get_exec_time(t);
+			//rec->data.switch_to.exec_time = get_exec_time(t);
+			/* this is only called when a task is picked so running_job is not NULL */
+			BUG_ON(!tsk_rt(t)->running_job);
+			rec->data.switch_to.exec_time = get_exec_time_job(tsk_rt(t)->running_job);
 			put_record(rec);
 		}
 	}
@@ -174,7 +177,10 @@ feather_callback void do_sched_trace_task_switch_away(unsigned long id,
 		rec = get_record(ST_SWITCH_AWAY, t);
 		if (rec) {
 			rec->data.switch_away.when      = now();
-			rec->data.switch_away.exec_time = get_exec_time(t);
+			/* this is only called before schedule is called so running_job is not NULL */
+			BUG_ON(!tsk_rt(t)->running_job);
+			rec->data.switch_away.exec_time = 
+			    get_exec_time_job(tsk_rt(t)->running_job);
 			put_record(rec);
 		}
 	}
@@ -189,7 +195,8 @@ feather_callback void do_sched_trace_task_completion(unsigned long id,
 	if (rec) {
 		rec->data.completion.when   = now();
 		rec->data.completion.forced = forced;
-		rec->data.completion.exec_time = get_exec_time(t);
+		//rec->data.completion.exec_time = get_exec_time(t);
+		rec->data.completion.exec_time = get_exec_time_job(tsk_rt(t)->running_job);
 		put_record(rec);
 	}
 }
