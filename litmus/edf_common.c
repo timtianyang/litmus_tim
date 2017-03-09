@@ -194,18 +194,18 @@ int edf_job_higher_prio(struct job_struct* first,
 		 * first_task does not have priority over second_task.
 		 */
 		int pid_break;
-printk("pid_break\n");
+
 		/* CONFIG_EDF_PID_TIE_BREAK */
 		pid_break = 1; // fall through to tie-break by pid;
 
 		/* Tie break by pid */
 		if(pid_break) {
 			struct task_struct* first_task;
-struct task_struct* second_task; 
-first_task = job2task(first);
-//printk("pid1\n");
+			struct task_struct* second_task; 
+			first_task = job2task(first);
+
 			second_task = job2task(second);
-//printk("pid2\n");
+
 			if (first_task->pid < second_task->pid) {
 				return 1;
 			}

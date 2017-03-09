@@ -120,16 +120,16 @@ static struct release_heap* get_release_heap(rt_domain_t *rt,
 
 	/* initialize pos for the case that the list is empty */
 	pos = rt->release_queue.slot[slot].next;
-//printk("loop\n");
+
 	list_for_each(pos, &rt->release_queue.slot[slot]) {
 		rh = list_entry(pos, struct release_heap, list);
-printk("scanning entry\n");
+
 		if (release_time == rh->release_time) {
 			/* perfect match -- this happens on hyperperiod
 			 * boundaries
 			 */
 			heap = rh;
-			printk("found one in slot %u\n", slot);
+			//printk("found one in slot %u\n", slot);
 			break;
 		} else if (lt_before(release_time, rh->release_time)) {
 			/* we need to insert a new node since rh is
@@ -138,7 +138,7 @@ printk("scanning entry\n");
 			break;
 		}
 	}
-//printk("break\n");
+
 	if (!heap && use_task_heap) {
 		/* use pre-allocated release heap */
 		rh = tsk_rt(t)->rel_heap;
@@ -146,7 +146,7 @@ printk("scanning entry\n");
 		rh->dom = rt;
 		rh->release_time = release_time;
 
-printk("listadd slot %u\n",slot);
+//printk("listadd slot %u\n",slot);
 		/* add to release queue */
 		list_add(&rh->list, pos->prev);
 		heap = rh;
@@ -428,6 +428,7 @@ void __remove_release(rt_domain_t* rt, struct task_struct *task)
     {
 	printk("removed a rh\n");
 	list_del(&rh->list);
+	hrtimer_cancel(&rh->timer);
     }
 }
 

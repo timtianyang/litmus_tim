@@ -93,7 +93,9 @@ static inline struct st_event_record* get_record(u8 type, struct task_struct* t)
 		rec->hdr.type = type;
 		rec->hdr.cpu  = smp_processor_id();
 		rec->hdr.pid  = t ? t->pid : 0;
-		rec->hdr.job  = t ? t->rt_param.job_params.job_no : 0;
+		//rec->hdr.job  = t ? t->rt_param.job_params.job_no : 0;
+		rec->hdr.job  = t ? ( t->rt_param.running_job ?
+		t->rt_param.running_job->job_params.job_no : 0) : 0;
 	} else {
 		put_cpu_var(st_event_buffer);
 	}
@@ -111,6 +113,10 @@ static inline void put_record(struct st_event_record* rec)
 	put_cpu_var(st_event_buffer);
 }
 
+/*
+ * called only after the task_admit callback finishes, which sets
+ * running_job to NULL. So it's safe to set job_id to 0.
+ */
 feather_callback void do_sched_trace_task_name(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
@@ -123,6 +129,9 @@ feather_callback void do_sched_trace_task_name(unsigned long id, unsigned long _
 	}
 }
 
+/*
+ * same as above. safe to set job_id to 0. 
+ */
 feather_callback void do_sched_trace_task_param(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
@@ -137,11 +146,19 @@ feather_callback void do_sched_trace_task_param(unsigned long id, unsigned long 
 	}
 }
 
+/*
+ * slightly more complicated than above. It is called during sporatic release after wakeup,
+ * during arm_release_timer(). The former already has the latest info. 
+ * The later needs a overwite on the job_id.
+ */
 feather_callback void do_sched_trace_task_release(unsigned long id, unsigned long _task)
 {
 	struct task_struct *t = (struct task_struct*) _task;
 	struct st_event_record* rec = get_record(ST_RELEASE, t);
 	if (rec) {
+		/* the original struct has the latest release info, so
+		  over write the job_no */
+		rec->hdr.job = t->rt_param.job_params.job_no; 
 		rec->data.release.release  = get_release(t);
 		rec->data.release.deadline = get_deadline(t);
 		put_record(rec);
@@ -150,6 +167,10 @@ feather_callback void do_sched_trace_task_release(unsigned long id, unsigned lon
 
 /* skipped: st_assigned_data, we don't use it atm */
 
+/*
+ * called after pick_next_task. Safe to use running_job.
+ * not sure what schedule_tail does
+ */
 feather_callback void do_sched_trace_task_switch_to(unsigned long id,
 						    unsigned long _task)
 {
@@ -168,6 +189,9 @@ feather_callback void do_sched_trace_task_switch_to(unsigned long id,
 	}
 }
 
+/*
+ * called before pick_next_task. safe to use running_job
+ */
 feather_callback void do_sched_trace_task_switch_away(unsigned long id,
 						      unsigned long _task)
 {
@@ -186,6 +210,10 @@ feather_callback void do_sched_trace_task_switch_away(unsigned long id,
 	}
 }
 
+/*
+ * called before task_exit callback, not necessarily has running job.
+ * called during psn_schedule() but running job is still valid.
+ */
 feather_callback void do_sched_trace_task_completion(unsigned long id,
 						     unsigned long _task,
 						     unsigned long forced)
@@ -196,8 +224,17 @@ feather_callback void do_sched_trace_task_completion(unsigned long id,
 		rec->data.completion.when   = now();
 		rec->data.completion.forced = forced;
 		//rec->data.completion.exec_time = get_exec_time(t);
-		rec->data.completion.exec_time = get_exec_time_job(tsk_rt(t)->running_job);
-		put_record(rec);
+		printk("cpu %d trace comp at %llu\n", now(), smp_processor_id());
+		if ( tsk_rt(t)->running_job )
+		{
+		    rec->data.completion.exec_time = get_exec_time_job(tsk_rt(t)->running_job);
+		    printk("trace: comp %llu\n", get_exec_time_job(tsk_rt(t)->running_job));
+		}
+		else
+		{
+		   printk("trace: comp no running job\n"); 
+		}
+    		put_record(rec);
 	}
 }
 

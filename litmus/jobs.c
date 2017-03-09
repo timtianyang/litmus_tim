@@ -125,6 +125,7 @@ long complete_job_oneshot(void)
 	TRACE_CUR("job completes at %llu (deadline: %llu)\n", litmus_clock(),
 		get_deadline(t));
 
+	printk("one shot\n");
 	sched_trace_task_completion(t, 0);
 	prepare_for_next_period(t);
 	sched_trace_task_release(t);
