@@ -25,6 +25,16 @@ inline static lt_t budget_remaining(struct task_struct* t)
 		return 0;
 }
 
+/* checks if the running job's remaining budget */
+inline static lt_t budget_remaining_job(struct task_struct *t)
+{
+	if (!budget_exhausted_job(t->rt_param.running_job, t))
+		return get_exec_cost(t) - get_exec_time_job(t->rt_param.running_job);
+	else
+		/* avoid overflow */
+		return 0;
+}
+
 #define budget_enforced(t) (tsk_rt(t)->task_params.budget_policy != NO_ENFORCEMENT)
 
 #define budget_precisely_enforced(t) (tsk_rt(t)->task_params.budget_policy \

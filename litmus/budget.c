@@ -26,6 +26,7 @@ static enum hrtimer_restart on_enforcement_timeout(struct hrtimer *timer)
 	unsigned long flags;
 
 	local_irq_save(flags);
+	printk("cpu %d enforcement fired\n", smp_processor_id());
 	TRACE("enforcement timer fired.\n");
 	et->armed = 0;
 	/* activate scheduler */
@@ -58,6 +59,9 @@ static void cancel_enforcement_timer(struct enforcement_timer* et)
 }
 
 /* assumes called with IRQs off */
+/*
+ * called after schedule() is done. t has a running task
+ */
 static void arm_enforcement_timer(struct enforcement_timer* et,
 				  struct task_struct* t)
 {
@@ -75,7 +79,9 @@ static void arm_enforcement_timer(struct enforcement_timer* et,
 	 * anyway, so we don't have to check whether it is still armed */
 
 	if (likely(!is_np(t))) {
-		when_to_fire = litmus_clock() + budget_remaining(t);
+		when_to_fire = litmus_clock() + budget_remaining_job(t);
+		printk("cpu %d will fire at %llu for pid %d\n",
+		smp_processor_id(),when_to_fire,t->pid);
 		__hrtimer_start_range_ns(&et->timer,
 					 ns_to_ktime(when_to_fire),
 					 0 /* delta */,

@@ -224,7 +224,7 @@ feather_callback void do_sched_trace_task_completion(unsigned long id,
 		rec->data.completion.when   = now();
 		rec->data.completion.forced = forced;
 		//rec->data.completion.exec_time = get_exec_time(t);
-		printk("cpu %d trace comp at %llu\n", now(), smp_processor_id());
+		printk("cpu %d trace comp at %llu\n", smp_processor_id(), now());
 		if ( tsk_rt(t)->running_job )
 		{
 		    rec->data.completion.exec_time = get_exec_time_job(tsk_rt(t)->running_job);

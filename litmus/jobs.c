@@ -140,7 +140,7 @@ static long sleep_until_next_release(void)
 	struct task_struct *t = current;
 	ktime_t next_release;
 	long err;
-
+printk("sleep until next release\n");
 	next_release = ns_to_ktime(get_release(t));
 
 	TRACE_CUR("next_release=%llu\n", get_release(t));
